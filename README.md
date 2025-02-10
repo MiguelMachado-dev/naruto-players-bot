@@ -4,11 +4,12 @@ Bot automatizado para o jogo NarutoPlayers que gerencia caçadas e invasões aut
 
 ## Funcionalidades
 
-- Login automático (com captcha manual)
+- Login automático (com captcha resolvido por Gemini AI)
 - Seleção automática de personagem
 - Caçadas automáticas
 - Processamento de invasões
-- Sistema de reconhecimento de captcha por imagem
+- Sistema de reconhecimento de captcha para caçadas por imagem
+- Sistema de reconhecimento de captcha para login por Gemini AI
 - Sistema de estatísticas de caçadas
 - Logs detalhados de execução
 
@@ -17,6 +18,7 @@ Bot automatizado para o jogo NarutoPlayers que gerencia caçadas e invasões aut
 - Python 3.10 ou superior
 - pip (gerenciador de pacotes Python)
 - Navegador Chromium (será instalado automaticamente pelo Playwright)
+- Uma chave de API do Google Gemini (necessária para resolver o captcha de login)
 
 ## Instalação
 
@@ -39,7 +41,7 @@ python -m venv venv
 
 4. Instale as dependências:
 ```bash
-pip install playwright pillow imagehash
+pip install -r requirements.txt
 ```
 
 5. Instale os navegadores necessários do Playwright:
@@ -49,29 +51,28 @@ playwright install
 
 ## Configuração
 
-1. Imagens de referência:
-   - Você precisa ter imagens JPEG dos personagens para o reconhecimento do captcha
-   - Nomeie as imagens em minúsculo: `naruto.jpeg`, `sakura.jpeg`, `sasuke.jpeg`, `kakashi.jpeg`
-   - Coloque as imagens na mesma pasta do script
+1. Chave de API do Google Gemini:
+   - Obtenha uma chave de API no Google AI Studio: https://aistudio.google.com/app/apikey
 
-2. Configurações do bot:
-   - Abra o arquivo Python e modifique as seguintes linhas com suas credenciais:
-   ```python
-   if __name__ == "__main__":
-       bot = NarutoBot(username="seu_usuario", password="sua_senha")
-       bot.run()
+2. Arquivo .env:
+   - Crie um arquivo chamado `.env` na raiz do projeto.
+   - Adicione as seguintes variáveis ao arquivo .env, substituindo os valores pelos seus:
+   ```bash
+   USER=seu_usuario
+   PASSWORD='sua_senha'
+   GOOGLE_API_KEY=sua_chave_de_api_do_google
    ```
 
 ## Uso
 
 1. Execute o bot:
 ```bash
-python nome_do_script.py
+python index.py
 ```
 
-2. Quando solicitado, preencha manualmente o captcha de login e pressione Enter no terminal
-
-3. O bot começará a executar automaticamente:
+2. O bot iniciará a execução automática:
+   - Realizará o login automático (resolvendo o captcha com Gemini AI)
+   - Selecionará o personagem
    - Realizará caçadas
    - Verificará invasões disponíveis
    - Manterá logs em arquivos com timestamp
@@ -80,13 +81,27 @@ python nome_do_script.py
 ## Estrutura de Arquivos
 
 ```
-├── nome_do_script.py
+├── index.py
+├── bot/
+│   ├── naruto_bot.py
+│   ├── captcha_processor.py
+│   ├── login_captcha_processor.py
+│   └── utils.py
 ├── naruto.jpeg
 ├── sakura.jpeg
 ├── sasuke.jpeg
 ├── kakashi.jpeg
+├── naruto_hashes.txt
+├── sakura_hashes.txt
+├── sasuke_hashes.txt
+├── kakashi_hashes.txt
 ├── bot_stats.json
-└── bot_log_[timestamp].log
+├── bot_log_[timestamp].log
+├── config.py
+├── .env
+├── .env.example
+├── requirements.txt
+└── README.md
 ```
 
 ## Logs e Estatísticas
@@ -130,6 +145,7 @@ Você pode ajustar vários parâmetros do bot:
 3. Falhas no login:
    - Certifique-se que as credenciais estão corretas
    - Verifique se o site está acessível
+   - Verifique se a chave da API do Google Gemini está configurada corretamente no arquivo `.env`
 
 ## Avisos Importantes
 
