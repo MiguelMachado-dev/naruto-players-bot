@@ -10,8 +10,23 @@ from datetime import datetime
 from typing import Dict, Optional, Tuple
 import json
 import random
+import google.generativeai as genai
+import dotenv
 
-# Configuração de logging mais detalhada
+# Carrega variáveis de ambiente
+dotenv.load_dotenv()
+
+USER= os.getenv("USER")
+PASSWORD= os.getenv("PASSWORD")
+
+# Configuração do Google AI (Gemini)
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+if not GOOGLE_API_KEY:
+    raise ValueError("A chave API do Google (GOOGLE_API_KEY) não está configurada.")
+genai.configure(api_key=GOOGLE_API_KEY)
+model = genai.GenerativeModel('gemini-2.0-pro-exp-02-05')
+
+# Configuração de logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
@@ -21,7 +36,7 @@ logging.basicConfig(
     ]
 )
 
-class CaptchaProcessor:
+class CaptchaProcessor:  # Mantido do seu código original (para captcha de personagem)
     def __init__(self, characters: list):
         self.characters = characters
         self.reference_hashes = {}
@@ -126,6 +141,48 @@ class CaptchaProcessor:
                 best_match = char
 
         return best_match if min_total_distance <= 30 else None
+class LoginCaptchaProcessor:
+    """Processador para o captcha de login (alfanumérico)."""
+
+    def solve_captcha(self, page) -> Optional[str]:
+        """Resolve o captcha de login usando o Gemini."""
+        try:
+            captcha_element = page.locator("#captcha_img #img_captcha")
+
+            # Se o elemento não existe, pode ser que a página não carregou corretamente
+            if not captcha_element.is_visible():
+                logging.error("Elemento do captcha de login não encontrado.")
+                return None
+
+            captcha_image_buffer = captcha_element.screenshot()
+            image = Image.open(io.BytesIO(captcha_image_buffer))
+
+            # Prompt preciso para o Gemini
+            prompt = "Responda apenas com os 5 caracteres alfanuméricos do captcha, sem mais nenhuma palavra ou espaço."
+            response = model.generate_content([prompt, image])
+
+            if response and response.text:
+                #Limpa a resposta: Remove espaços
+                cleaned_response = response.text.replace(" ", "").strip()
+
+                logging.info(f"Resposta bruta do Gemini (login): {response.text}")
+                logging.info(f"Resposta limpa do Gemini (login): {cleaned_response}")
+
+                #Valida o tamanho
+                if len(cleaned_response) == 5:
+                  return cleaned_response
+                else:
+                  logging.warning(f"Resposta do Gemini para o login não tem 5 caracteres: {cleaned_response}")
+                  return None
+            else:
+                logging.warning("Gemini não retornou uma resposta válida para o login.")
+                return None
+
+        except Exception as e:
+            logging.exception("Erro ao resolver captcha de login com Gemini:")
+            return None
+
+
 
 class NarutoBot:
     def __init__(self, username: str, password: str):
@@ -138,6 +195,7 @@ class NarutoBot:
             "Kakashi": "teste_resp4"
         }
         self.captcha_processor = CaptchaProcessor(list(self.character_to_id.keys()))
+        self.login_captcha_processor = LoginCaptchaProcessor()  # Instância do novo processador
         self.stats = self._load_stats()
 
     def _load_stats(self) -> Dict:
@@ -208,7 +266,7 @@ class NarutoBot:
 
         with sync_playwright() as p:
             try:
-                browser = p.chromium.launch(headless=False)
+                browser = p.chromium.launch(headless=False)  # Mantenha headless=False para depuração
                 context = browser.new_context(
                     viewport={'width': 1920, 'height': 1080},
                     user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -222,11 +280,10 @@ class NarutoBot:
                     try:
                         success = self._execute_hunt_cycle(page)
                         self.update_stats(success)
-                        # Adiciona um delay aleatório entre ciclos
-                        time.sleep(random.uniform(2, 5))
+                        time.sleep(random.uniform(2, 5))  # Delay aleatório
                     except Exception as e:
                         logging.exception("Erro durante ciclo de caçada:")
-                        time.sleep(60)  # Espera 1 minuto antes de tentar novamente
+                        time.sleep(60)
 
             except Exception as e:
                 logging.exception("Erro crítico durante execução do bot:")
@@ -235,13 +292,35 @@ class NarutoBot:
                 self._save_stats()
                 browser.close()
 
-    def _login(self, page) -> None:
-        """Realiza o login no site"""
+
+    def _login(self, page, attempts=0) -> None:
+        """Realiza o login no site, usando o Gemini para o captcha."""
+        if attempts >= 3:  # Limite de 3 tentativas (conforme sugerido anteriormente)
+            raise RuntimeError("Falha ao resolver o captcha de login após múltiplas tentativas.")
         page.goto("https://www.narutoplayers.com.br/")
-        page.locator('input[name="usuario"]').fill(self.username)
-        page.locator('input[name="senha"]').fill(self.password)
-        input("Pressione Enter após preencher o captcha...")
-        page.wait_for_timeout(1000)
+
+        # Resolve o captcha de login
+        captcha_solution = self.login_captcha_processor.solve_captcha(page)
+
+        if captcha_solution:
+            page.locator('input[name="usuario"]').fill(self.username)
+            page.locator('input[name="senha"]').fill(self.password)
+            page.locator('input[name="codigo"]').fill(captcha_solution) #Preenche o campo do captcha
+            page.locator('input[value="Login"]').click()
+            page.wait_for_load_state() # Espere a página após o login
+
+            #Verifica se o login foi bem-sucedido.
+            if page.locator("#menu_personagem").is_visible():
+              logging.info("Login bem-sucedido!")
+            else:
+              logging.error("Falha no login. Verifique as credenciais e o captcha.")
+              #Poderia adicionar um mecanismo para tentar novamente, ou abortar.
+
+        else:
+            logging.error("Não foi possível resolver o captcha de login.")
+            self._login(page, attempts + 1)
+            return
+
 
     def _select_character(self, page) -> None:
         """Seleciona o personagem no slot 1"""
@@ -340,5 +419,5 @@ class NarutoBot:
             return False
 
 if __name__ == "__main__":
-    bot = NarutoBot(username="seu_usuario", password="sua_senha")
+    bot = NarutoBot(username=USER, password=PASSWORD)
     bot.run()
