@@ -209,9 +209,20 @@ class NarutoBot:
             page.locator(f"#{radio_button_id}").check()
             page.locator('input[value="Caçar"]').click()
             page.wait_for_timeout(random.uniform(1000, 2000))
-            page.locator('input[value="Atacar"]').click()
+            try:
+                page.wait_for_selector('input[value="Atacar"]', timeout=30000)
+                page.locator('input[value="Atacar"]').click()
+            except Exception as e:
+                logging.error(f"Falha ao clicar no botão 'Atacar': {e}")
+                return False
             enemy_name = page.locator('#box_dir .char_dentro_h .linha_css2 .col_css2').inner_text()
             logging.info(f"Caçando {enemy_name}...")
+            first_element = page.locator("#corpo_col_dir .linha_css_memo.center").nth(0)
+            if first_element:
+                battle_result = first_element.inner_text()
+                logging.info(battle_result)
+            else:
+                logging.info("Resultado da batalha não encontrado")
 
             # Marca o início da penalidade
             penalty_start = time.time()
