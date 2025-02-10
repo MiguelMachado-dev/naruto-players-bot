@@ -1,0 +1,5 @@
+playwright==1.41.1  # For browser automation
+Pillow==10.2.0     # For image processing
+ImageHash==4.3.1   # For image hash comparison
+python-dotenv      # For loading .env files
+google-generativeai # For Google's Gemini AI API
