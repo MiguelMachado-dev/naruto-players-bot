@@ -15,7 +15,7 @@ Bot automatizado para o jogo NarutoPlayers que gerencia caçadas e invasões aut
 
 ## Pré-requisitos
 
-- Python 3.10 ou superior
+- Python 3.10.11 é recomendado
 - pip (gerenciador de pacotes Python)
 - Navegador Chromium (será instalado automaticamente pelo Playwright)
 - Uma chave de API do Google Gemini (necessária para resolver o captcha de login)
@@ -46,7 +46,7 @@ pip install -r requirements.txt
 
 5. Instale os navegadores necessários do Playwright:
 ```bash
-playwright install
+playwright install chromium
 ```
 
 ## Configuração
@@ -55,11 +55,11 @@ playwright install
    - Obtenha uma chave de API no Google AI Studio: https://aistudio.google.com/app/apikey
 
 2. Arquivo .env:
-   - Crie um arquivo chamado `.env` na raiz do projeto.
+   - Crie um arquivo chamado `.env` na raiz do projeto OU renomeie o existente `.env.example` para `.env`.
    - Adicione as seguintes variáveis ao arquivo .env, substituindo os valores pelos seus:
    ```bash
-   USER=seu_usuario
-   PASSWORD='sua_senha'
+   NP_USER=seu_usuario
+   NP_PASSWORD='sua_senha'
    GOOGLE_API_KEY=sua_chave_de_api_do_google
    ```
 
