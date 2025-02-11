@@ -37,7 +37,6 @@ class CaptchaProcessor:
                 'ahash': imagehash.hex_to_hash(lines[1]),
                 'dhash': imagehash.hex_to_hash(lines[2])
             }
-        logging.info(f"Hashes de {char} carregados do arquivo.")
 
     def _create_and_save_hashes(self, char: str) -> None:
         """Cria e salva novos hashes para um personagem"""
