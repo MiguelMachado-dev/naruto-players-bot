@@ -22,6 +22,7 @@ class LoginCaptchaProcessor:
 
             # Prompt preciso para o Gemini
             prompt = "Responda apenas com os 5 caracteres alfanuméricos do captcha, sem mais nenhuma palavra ou espaço."
+            logging.info("Resolvendo captcha de login com Gemini...")
             response = genai.GenerativeModel('gemini-2.0-pro-exp-02-05').generate_content([prompt, image])
 
             if response and response.text:
