@@ -22,6 +22,22 @@ class NarutoBot:
         self.captcha_processor = CaptchaProcessor(list(self.character_to_id.keys()))
         self.login_captcha_processor = LoginCaptchaProcessor()
         self.stats = load_stats()
+        logging.info("NarutoBot inicializado.")
+
+        # Adiciona a escolha do tipo de caçada no início
+        self.hunt_type = self._choose_hunt_type()
+
+    def _choose_hunt_type(self) -> int:
+        """Permite ao usuário escolher o tipo de caçada."""
+        while True:
+            print("Escolha o tipo de caçada:")
+            print("1 - Caçada aleatória")
+            print("2 - Caçada por tempo")
+            choice = input("Digite 1 ou 2: ")
+            if choice in ("1", "2"):
+                return int(choice)
+            else:
+                print("Opção inválida. Digite 1 ou 2.")
 
     def _load_stats(self) -> Dict:
         """Carrega estatísticas do bot de um arquivo JSON"""
@@ -61,6 +77,25 @@ class NarutoBot:
             logging.info("Sem tempo de penalidade para aguardar")
             return 0
 
+    @staticmethod
+    def get_remaining_invasion_time(page) -> int:
+        """Extrai o tempo restante do elemento HTML do timer de invasão"""
+        try:
+            # Primeiro verifica se o elemento existe com um timeout curto
+            if not page.locator("#relogio_invasao").is_visible(timeout=2000):
+                logging.info("Contador de invasão não encontrado na página")
+                return 0
+
+            # Se existir, pega o texto com timeout curto
+            timer_text = page.locator("#relogio_invasao").inner_text(timeout=2000)
+            match = re.match(r"(\d{2}):(\d{2}):(\d{2})", timer_text)
+            if match:
+                hours, minutes, seconds = map(int, match.groups())
+                return hours * 3600 + minutes * 60 + seconds
+            return 0
+        except Exception as e:
+            logging.info("Sem tempo de invasão para aguardar")
+            return 0
 
     def wait_for_hunt_timer(self, page) -> None:
         """Espera o timer de caçada terminar com tempo aleatório adicional"""
@@ -77,6 +112,7 @@ class NarutoBot:
     def run(self) -> None:
         """Executa o bot principal"""
         start_time = time.time()
+        logging.info("Iniciando a execução do bot.")
 
         with sync_playwright() as p:
             try:
@@ -92,7 +128,12 @@ class NarutoBot:
 
                 while True:
                     try:
-                        success = self._execute_hunt_cycle(page)
+                        if self.hunt_type == 1:
+                            success = self._execute_hunt_cycle(page)
+                        elif self.hunt_type == 2:
+                            success = self._execute_timed_hunt_cycle(page)
+                        else:
+                            raise ValueError("Tipo de caçada inválido.")
                         self.update_stats(success)
                         time.sleep(random.uniform(2, 5))  # Delay aleatório
                     except Exception as e:
@@ -111,7 +152,9 @@ class NarutoBot:
         """Realiza o login no site, usando o Gemini para o captcha."""
         if attempts >= 3:  # Limite de 3 tentativas (conforme sugerido anteriormente)
             raise RuntimeError("Falha ao resolver o captcha de login após múltiplas tentativas.")
+        logging.info("Acessando a página de login.")
         page.goto("https://www.narutoplayers.com.br/")
+        page.wait_for_load_state()
 
         # Resolve o captcha de login
         captcha_solution = self.login_captcha_processor.solve_captcha(page)
@@ -125,10 +168,11 @@ class NarutoBot:
 
             #Verifica se o login foi bem-sucedido.
             if page.locator('#corpo .selecao_char a[href="?p=selecionar&slot=1"]').is_visible():
-              logging.info("Login bem-sucedido!")
+                logging.info("Login bem-sucedido!")
             else:
-              logging.error("Falha no login. Verifique as credenciais e o captcha.")
-              #Poderia adicionar um mecanismo para tentar novamente, ou abortar.
+                logging.error("Falha no login. Verifique as credenciais e o captcha.")
+                self._login(page, attempts + 1)
+                return
 
         else:
             logging.error("Não foi possível resolver o captcha de login.")
@@ -138,6 +182,7 @@ class NarutoBot:
 
     def _select_character(self, page) -> None:
         """Seleciona o personagem no slot 1"""
+        logging.info("Selecionando personagem no slot 1.")
         page.locator('#corpo .selecao_char a[href="?p=selecionar&slot=1"]').click()
         page.wait_for_timeout(1000)
         page.locator('input[onclick="javascript:redirect(\'?p=selecionar&slot=1&confirma=ok\'); return false;"]').click()
@@ -169,6 +214,30 @@ class NarutoBot:
                 page.wait_for_selector(f"#{radio_button_id}", state="visible", timeout=60000)
                 page.locator(f"#{radio_button_id}").check()
                 page.locator('#relogio_invasao').click()
+                # Verifica se o ataque foi bem-sucedido, caso a url possua &aviso=5 é porque o ataque deu errado
+                if "&aviso=5" in page.url:
+                    logging.error("Erro ao atacar o invasor.")
+                    # Loga o erro da pagina
+                    error_text = page.locator('#error').inner_text()
+                    logging.error(error_text)
+                    # Se error_text conter a seguinte frase "25 pontos de HP", va para status e recupe o HP.
+                    if "25 pontos de HP" in error_text:
+                        page.locator('.menu_lateral li a[href="?p=status"]').click()
+                        page.wait_for_load_state()
+                        hp_text = page.locator('#hp_baixo .hp_xp').inner_text()
+                        current_hp = int(hp_text.split("/")[0].strip())
+                        max_hp = int(hp_text.split("/")[1].strip())
+                        if current_hp < max_hp / 2:
+                            logging.info("HP baixo, curando...")
+                            use_link = page.locator('a').filter(has_text="Usar").nth(0)
+                            if use_link:
+                                use_link.click()
+                            else:
+                                logging.error("Link 'Usar' não encontrado.")
+                                return False
+                        else:
+                            logging.info("HP atual: %d/%d, não é necessário curar.", current_hp, max_hp)
+                    return False
 
                 logging.info("Ataque ao invasor realizado com sucesso!")
                 return True
@@ -183,14 +252,18 @@ class NarutoBot:
     def _execute_hunt_cycle(self, page) -> bool:
         """Executa um ciclo completo de caçada"""
         page.wait_for_timeout(random.uniform(1000, 2000))
+        page.wait_for_selector('.menu_lateral li a[href="?p=cacadas"]', state='visible', timeout=30000)
         page.locator('.menu_lateral li a[href="?p=cacadas"]').click()
         page.wait_for_timeout(random.uniform(1000, 2000))
+        logging.info("Iniciando caçada...")
 
         self.wait_for_hunt_timer(page)
 
         page.locator('.aba_bg a[href="?p=cacadas&action=aleatoria"]').click()
+        logging.info("Selecionando inimigo aleatório...")
         page.wait_for_timeout(random.uniform(1000, 2000))
         page.select_option('select[name="inimigo_aleatorio"]', "1")
+        logging.info("Inimigo equivalente selecionado!")
 
         identified_character = self.captcha_processor.identify_character(page)
 
@@ -227,7 +300,30 @@ class NarutoBot:
             # Marca o início da penalidade
             penalty_start = time.time()
 
-            self._process_invasion(page)
+            invasion_successful = self._process_invasion(page)
+
+            # Se a invasão não foi bem-sucedida, vá para a página de status
+            if not invasion_successful:
+                logging.info("Invasão não disponível, indo para a página de status.")
+                page.locator('.menu_lateral li a[href="?p=status"]').click()
+                # Espere a pagina carregar
+                page.wait_for_load_state()
+                # Cheque o hp do personagem
+                hp_text = page.locator('#hp_baixo .hp_xp').inner_text()
+                # Se estiver abaixo de 50%, vamos curar.
+                current_hp = int(hp_text.split("/")[0].strip())
+                max_hp = int(hp_text.split("/")[1].strip())
+                if current_hp < max_hp / 2:
+                    logging.info("HP baixo, curando...")
+                    use_link = page.locator('a').filter(has_text="Usar").nth(0)
+                    if use_link:
+                        use_link.click()
+                    else:
+                        logging.error("Link 'Usar' não encontrado.")
+                        return False
+                    page.wait_for_timeout(2000)
+                else:
+                    logging.info("HP atual: %d/%d, não é necessário curar.", current_hp, max_hp)
 
             # Calcula quanto tempo já se passou durante o processamento da invasão
             elapsed_time = time.time() - penalty_start
@@ -236,6 +332,75 @@ class NarutoBot:
             if remaining_penalty > 0:
                 logging.info(f"Aguardando {remaining_penalty:.1f} segundos restantes de penalidade...")
                 time.sleep(remaining_penalty)
+
+            return True
+
+        except Exception as e:
+            logging.exception("Erro durante a execução da caçada:")
+            return False
+
+    def _execute_timed_hunt_cycle(self, page) -> bool:
+        """Executa um caça por tempo"""
+        page.wait_for_timeout(random.uniform(1000, 2000))
+        page.wait_for_selector('.menu_lateral li a[href="?p=cacadas"]', state='visible', timeout=30000)
+        page.locator('.menu_lateral li a[href="?p=cacadas"]').click()
+        page.wait_for_timeout(random.uniform(1000, 2000))
+        logging.info("Iniciando caçada...")
+
+        self.wait_for_hunt_timer(page)
+
+        page.locator('.aba_bg a[href="?p=cacadas&action=tempo"]').click()
+        logging.info("Selecionando tempo de caça de 5 minutos...")
+
+        identified_character = self.captcha_processor.identify_character(page)
+
+        if not identified_character:
+            logging.warning("Falha na identificação do personagem")
+            page.reload()
+            return False
+
+        radio_button_id = self.character_to_id.get(identified_character)
+        if not radio_button_id:
+            logging.error(f"ID não encontrado para o personagem: {identified_character}")
+            return False
+
+        try:
+            page.wait_for_selector(f"#{radio_button_id}", state="visible", timeout=60000)
+            page.locator(f"#{radio_button_id}").check()
+            page.locator('input[value="Caçar"]').click()
+            page.wait_for_timeout(random.uniform(1000, 2000))
+
+            # Marca o início da penalidade
+            penalty_start = time.time()
+
+            invasion_successful = self._process_invasion(page)
+
+            # Se a invasão não foi bem-sucedida, vá para a página de status
+            if not invasion_successful:
+                logging.info("Invasão não disponível.")
+
+            # Calcula quanto tempo já se passou durante o processamento da invasão
+            elapsed_time = time.time() - penalty_start
+            remaining_penalty = max(300 - elapsed_time, 0)  # 300 segundos (5 minutos) menos o tempo gasto
+
+            if remaining_penalty > 0:
+                logging.info(f"Aguardando {remaining_penalty:.1f} segundos restantes de penalidade...")
+                time.sleep(remaining_penalty)
+
+            page.wait_for_selector('.menu_lateral li a[href="?p=cacadas"]', state='visible', timeout=30000)
+            page.locator('.menu_lateral li a[href="?p=cacadas"]').click()
+            page.wait_for_load_state()
+
+            try:
+                page.locator('#form_cacadas #receber_m img').click()
+                logging.info("Recebendo recompensa...")
+                # Loga a recompença recebida
+                reward_text = page.locator('#relogio_cacadas .cacada_recompensa.c_reco_alt').inner_text()
+                logging.info(reward_text)
+                page.wait_for_timeout(random.uniform(1000, 2000))
+            except Exception as e:
+                logging.error(f"Falha ao clicar no botão 'Receber': {e}")
+                return False
 
             return True
 
