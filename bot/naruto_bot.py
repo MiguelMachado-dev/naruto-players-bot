@@ -33,9 +33,11 @@ class NarutoBot:
             print("Escolha o tipo de caçada:")
             print("1 - Caçada aleatória")
             print("2 - Caçada por tempo")
-            choice = input("Digite 1 ou 2: ")
+            choice = input("Digite 1 ou 2 (padrão: 1): ")
             if choice in ("1", "2"):
                 return int(choice)
+            elif choice == "":
+                return 1  # Caçada aleatória como padrão
             else:
                 print("Opção inválida. Digite 1 ou 2.")
 
@@ -102,7 +104,7 @@ class NarutoBot:
         remaining_time = self.get_remaining_time(page)
         if remaining_time > 0:
             # Adiciona um tempo aleatório extra para parecer mais humano
-            extra_time = random.randint(5, 30)
+            extra_time = random.randint(0, 5)
             total_wait = remaining_time + extra_time
             logging.info(f"Aguardando {total_wait} segundos (inclui {extra_time}s aleatórios)")
             time.sleep(total_wait)
@@ -249,21 +251,56 @@ class NarutoBot:
             logging.exception("Erro durante o processamento da invasão:")
             return False
 
+    def _check_doujutsu(self, page) -> int:
+        """Verifica se o Doujutsu está ativo e retorna o tempo restante."""
+        try:
+            page.locator('.menu_lateral li a[href="?p=status"]').click()
+            page.wait_for_load_state()
+            doujutsu_element = page.locator('#doujutsu_relogio')
+            doujutsu_name_element = page.locator('.doujutsu .doujutsu_centro .doujutsu_info .linha_css2.center.rotulo')
+
+            if not doujutsu_name_element.is_visible(timeout=2000):
+                logging.info("Doujutsu não está ativo ou nome não encontrado.")
+                return 0
+
+            doujutsu_name = doujutsu_name_element.inner_text().strip()
+
+            # Se o nome do doujutsu não contiver "Rinnegan", retorna 0 para usar a penalidade padrão
+            if "Rinnegan" not in doujutsu_name:
+                logging.info(f"Doujutsu ativo ({doujutsu_name}), mas não é Rinnegan. Usando penalidade padrão.")
+                return 0
+
+            if doujutsu_element.is_visible(timeout=2000):
+                timer_text = doujutsu_element.inner_text()
+                match = re.search(r"(\d{2}):(\d{2}):(\d{2})", timer_text)
+                if match:
+                    hours, minutes, seconds = map(int, match.groups())
+                    total_seconds = hours * 3600 + minutes * 60 + seconds
+                    logging.info(f"Doujutsu ativo, tempo restante: {hours:02d}:{minutes:02d}:{seconds:02d}")
+                    return total_seconds
+                else:
+                    logging.warning("Tempo restante do Doujutsu não encontrado. Ativando-o!")
+                    page.locator('#form_doujutsu input[value="Ativar"]').click()
+                    page.locator('#conteudo_box_alerta a[href="javascript:envia_form(\'form_doujutsu\');"]').click()
+                    return 0
+            else:
+                logging.info("Doujutsu não está ativo.")
+                return 0
+        except Exception as e:
+            logging.exception("Erro ao verificar o Doujutsu:")
+            return 0
+
     def _execute_hunt_cycle(self, page) -> bool:
         """Executa um ciclo completo de caçada"""
-        page.wait_for_timeout(random.uniform(1000, 2000))
-        page.wait_for_selector('.menu_lateral li a[href="?p=cacadas"]', state='visible', timeout=30000)
-        page.locator('.menu_lateral li a[href="?p=cacadas"]').click()
-        page.wait_for_timeout(random.uniform(1000, 2000))
+        page.wait_for_load_state()
         logging.info("Iniciando caçada...")
 
+        page.goto("https://www.narutoplayers.com.br/?p=cacadas&action=nivel")
         self.wait_for_hunt_timer(page)
-
-        page.locator('.aba_bg a[href="?p=cacadas&action=aleatoria"]').click()
         logging.info("Selecionando inimigo aleatório...")
         page.wait_for_timeout(random.uniform(1000, 2000))
-        page.select_option('select[name="inimigo_aleatorio"]', "1")
-        logging.info("Inimigo equivalente selecionado!")
+        page.select_option('select[name="nivel_inimigo"]', "2")
+        logging.info("Gennin selecionado!")
 
         identified_character = self.captcha_processor.identify_character(page)
 
@@ -327,7 +364,13 @@ class NarutoBot:
 
             # Calcula quanto tempo já se passou durante o processamento da invasão
             elapsed_time = time.time() - penalty_start
-            remaining_penalty = max(300 - elapsed_time, 0)  # 300 segundos (5 minutos) menos o tempo gasto
+            # Verifica se o doujutsu está ativo para reduzir a penalidade
+            doujutsu_active_time = self._check_doujutsu(page)
+            if doujutsu_active_time > 0:
+                penalty_time = 120  # 2 minutos
+            else:
+                penalty_time = 300  # 5 minutos
+            remaining_penalty = max(penalty_time - elapsed_time, 0)
 
             if remaining_penalty > 0:
                 logging.info(f"Aguardando {remaining_penalty:.1f} segundos restantes de penalidade...")
@@ -348,6 +391,16 @@ class NarutoBot:
         logging.info("Iniciando caçada...")
 
         self.wait_for_hunt_timer(page)
+
+        # Verifica se existe recompença para receber
+        if page.locator('#form_cacadas #receber_m img').is_visible():
+            page.locator('#form_cacadas #receber_m img').click()
+            page.wait_for_load_state()
+            logging.info("Recebendo recompensa...")
+            # Loga a recompença recebida
+            reward_text = page.locator('#relogio_cacadas .cacada_recompensa.c_reco_alt').inner_text()
+            logging.info(reward_text)
+            page.wait_for_timeout(random.uniform(1000, 2000))
 
         page.locator('.aba_bg a[href="?p=cacadas&action=tempo"]').click()
         logging.info("Selecionando tempo de caça de 5 minutos...")
@@ -393,6 +446,7 @@ class NarutoBot:
 
             try:
                 page.locator('#form_cacadas #receber_m img').click()
+                page.wait_for_load_state()
                 logging.info("Recebendo recompensa...")
                 # Loga a recompença recebida
                 reward_text = page.locator('#relogio_cacadas .cacada_recompensa.c_reco_alt').inner_text()
