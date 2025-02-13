@@ -33,13 +33,14 @@ class NarutoBot:
             print("Escolha o tipo de caçada:")
             print("1 - Caçada aleatória")
             print("2 - Caçada por tempo")
-            choice = input("Digite 1 ou 2 (padrão: 1): ")
-            if choice in ("1", "2"):
+            print("3 - Farmar invasões")
+            choice = input("Digite 1, 2 ou 3 (padrão: 1): ")
+            if choice in ("1", "2", "3" ):
                 return int(choice)
             elif choice == "":
                 return 1  # Caçada aleatória como padrão
             else:
-                print("Opção inválida. Digite 1 ou 2.")
+                print("Opção inválida. Digite 1, 2 ou 3.")
 
     def _load_stats(self) -> Dict:
         """Carrega estatísticas do bot de um arquivo JSON"""
@@ -118,7 +119,7 @@ class NarutoBot:
 
         with sync_playwright() as p:
             try:
-                browser = p.chromium.launch(headless=True)  # Mantenha headless=False para depuração
+                browser = p.chromium.launch(headless=False)  # Mantenha headless=False para depuração
                 context = browser.new_context(
                     viewport={'width': 1920, 'height': 1080},
                     user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -134,6 +135,8 @@ class NarutoBot:
                             success = self._execute_hunt_cycle(page)
                         elif self.hunt_type == 2:
                             success = self._execute_timed_hunt_cycle(page)
+                        elif self.hunt_type == 3:
+                            success = self._execute_invasion(page)
                         else:
                             raise ValueError("Tipo de caçada inválido.")
                         self.update_stats(success)
@@ -268,6 +271,11 @@ class NarutoBot:
                 return True
             else:
                 logging.info("Invasor não está disponível para ataque no momento")
+                if self.hunt_type == 3:
+                    remaining_invasion_time = self.get_remaining_invasion_time(page)
+                    if remaining_invasion_time > 0:
+                        logging.info(f"Aguardando {remaining_invasion_time} segundos até a próxima invasão...")
+                        time.sleep(remaining_invasion_time)
                 return False
 
         except Exception as e:
@@ -408,9 +416,8 @@ class NarutoBot:
     def _execute_timed_hunt_cycle(self, page) -> bool:
         """Executa um caça por tempo"""
         page.wait_for_timeout(random.uniform(1000, 2000))
-        page.wait_for_selector('.menu_lateral li a[href="?p=cacadas"]', state='visible', timeout=30000)
-        page.locator('.menu_lateral li a[href="?p=cacadas"]').click()
-        page.wait_for_timeout(random.uniform(1000, 2000))
+        page.goto("https://www.narutoplayers.com.br/?p=cacadas&action=tempo")
+        page.wait_for_load_state()
         logging.info("Iniciando caçada...")
 
         self.wait_for_hunt_timer(page)
@@ -421,11 +428,11 @@ class NarutoBot:
             page.wait_for_load_state()
             logging.info("Recebendo recompensa...")
             # Loga a recompença recebida
-            reward_text = page.locator('#relogio_cacadas .cacada_recompensa.c_reco_alt').inner_text()
+            reward_text = page.locator('#relogio_cacadas .cacada_recompensa').inner_text()
             logging.info(reward_text)
-            page.wait_for_timeout(random.uniform(1000, 2000))
+            page.goto("https://www.narutoplayers.com.br/?p=cacadas&action=tempo")
+            page.wait_for_load_state()
 
-        page.locator('.aba_bg a[href="?p=cacadas&action=tempo"]').click()
         logging.info("Selecionando tempo de caça de 5 minutos...")
 
         identified_character = self.captcha_processor.identify_character(page)
@@ -449,11 +456,7 @@ class NarutoBot:
             # Marca o início da penalidade
             penalty_start = time.time()
 
-            invasion_successful = self._process_invasion(page)
-
-            # Se a invasão não foi bem-sucedida, vá para a página de status
-            if not invasion_successful:
-                logging.info("Invasão não disponível.")
+            self._process_invasion(page)
 
             # Calcula quanto tempo já se passou durante o processamento da invasão
             elapsed_time = time.time() - penalty_start
@@ -472,7 +475,7 @@ class NarutoBot:
                 page.wait_for_load_state()
                 logging.info("Recebendo recompensa...")
                 # Loga a recompença recebida
-                reward_text = page.locator('#relogio_cacadas .cacada_recompensa.c_reco_alt').inner_text()
+                reward_text = page.locator('#relogio_cacadas .cacada_recompensa').inner_text()
                 logging.info(reward_text)
                 page.wait_for_timeout(random.uniform(1000, 2000))
             except Exception as e:
@@ -484,3 +487,18 @@ class NarutoBot:
         except Exception as e:
             logging.exception("Erro durante a execução da caçada:")
             return False
+
+    def _execute_invasion(self, page) -> bool:
+        """Executa invasões continuamente com um delay de 5 minutos entre cada uma."""
+        while True:
+            try:
+                success = self._process_invasion(page)
+
+                if success:
+                    logging.info("Invasão processada com sucesso.")
+                else:
+                    logging.warning("Falha ao processar a invasão.")
+
+            except Exception as e:
+                logging.exception("Erro durante a execução da invasão:")
+                time.sleep(15)
