@@ -31,7 +31,7 @@ class NarutoBot:
         """Permite ao usuário escolher o tipo de caçada."""
         while True:
             print("Escolha o tipo de caçada:")
-            print("1 - Caçada aleatória")
+            print("1 - Caçada por level (Gennin)")
             print("2 - Caçada por tempo")
             print("3 - Farmar invasões")
             choice = input("Digite 1, 2 ou 3 (padrão: 1): ")
