@@ -80,6 +80,7 @@ class CaptchaProcessor:
         """Identifica um personagem baseado na imagem do captcha"""
         try:
             captcha_div = page.locator(".teste_img")
+            captcha_div.wait_for(state='visible', timeout=60000)
             captcha_image_buffer = captcha_div.screenshot(omit_background=True)
             captcha_hashes = self._get_image_hashes(captcha_image_buffer)
 
