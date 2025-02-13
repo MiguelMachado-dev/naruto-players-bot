@@ -185,9 +185,32 @@ class NarutoBot:
     def _select_character(self, page) -> None:
         """Seleciona o personagem no slot 1"""
         logging.info("Selecionando personagem no slot 1.")
-        page.locator('#corpo .selecao_char a[href="?p=selecionar&slot=1"]').click()
-        page.wait_for_timeout(1000)
-        page.locator('input[onclick="javascript:redirect(\'?p=selecionar&slot=1&confirma=ok\'); return false;"]').click()
+        selector = '#corpo .selecao_char a[href="?p=selecionar&slot=1"]'
+        try:
+            page.wait_for_selector(selector, state='visible', timeout=30000)  # Espera até 30 segundos
+            if page.locator(selector).is_visible():
+                logging.info("Elemento de seleção de personagem está visível.")
+                page.locator(selector).click()
+                page.wait_for_timeout(1000)
+
+                confirm_selector = 'input[onclick="javascript:redirect(\'?p=selecionar&slot=1&confirma=ok\'); return false;"]'
+                page.wait_for_selector(confirm_selector, state='visible', timeout=30000)  # Espera até 30 segundos
+                if page.locator(confirm_selector).is_visible():
+                    logging.info("Elemento de confirmação de seleção está visível.")
+                    page.locator(confirm_selector).click()
+                    logging.info("Personagem selecionado com sucesso.")
+                else:
+                    logging.error("Elemento de confirmação de seleção não está visível.")
+                    page.screenshot(path="error_select_character_confirm.png")
+                    raise Exception("Elemento de confirmação de seleção não está visível.")
+            else:
+                logging.error("Elemento de seleção de personagem não está visível.")
+                page.screenshot(path="error_select_character.png")
+                raise Exception("Elemento de seleção de personagem não está visível.")
+        except Exception as e:
+            logging.exception("Erro ao selecionar personagem:")
+            page.screenshot(path="error_select_character_exception.png")
+            raise e
 
     def _process_invasion(self, page) -> bool:
         """Processa a invasão após a caçada"""
