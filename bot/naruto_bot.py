@@ -119,12 +119,70 @@ class NarutoBot:
 
         with sync_playwright() as p:
             try:
+                ad_domains = [
+                    "*googleadservices.com*",
+                    "*doubleclick.net*",
+                    "*google-analytics.com*",
+                    "*googlesyndication.com*",
+                    "*adnxs.com*",
+                    "*advertising.com*",
+                    "*adform.net*",
+                    "*facebook.com*",
+                    "*analytics*",
+                    "*tracker*",
+                    "*pixel*",
+                    "*banner*",
+                    "*ads*",
+                    "*adsystem*",
+                    "*adserver*",
+                    "*tracking*",
+                ]
                 browser = p.chromium.launch(headless=True)  # Mantenha headless=False para depuração
                 context = browser.new_context(
                     viewport={'width': 1920, 'height': 1080},
                     user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 )
+                context.route(
+                    "**/*(ads|analytics|facebook|doubleclick|googleadservices|googlesyndication)*",
+                    lambda route: route.abort()
+                )
+
+                # Bloqueia múltiplos padrões de URLs
+                for pattern in ad_domains:
+                    context.route(pattern, lambda route: route.abort())
+
+                # Bloqueia scripts específicos de anúncios
+                context.route("**/*.js", lambda route: route.abort()
+                    if any(ad in route.request.url for ad in ["ads", "analytics", "pixel", "track"])
+                    else route.continue_()
+                )
+
+                # Bloqueia requisições de imagens suspeitas de serem anúncios
+                context.route("**/*.{png,jpg,gif}", lambda route: route.abort()
+                    if any(ad in route.request.url for ad in ["ads", "banner", "popup"])
+                    else route.continue_()
+                )
+
                 page = context.new_page()
+
+                page.on("load", lambda: page.evaluate("""
+                    () => {
+                        // Remove elementos comuns de anúncios
+                        const adSelectors = [
+                            'div[id*="google_ads"]',
+                            'div[id*="banner"]',
+                            'div[class*="ad-"]',
+                            'div[class*="ads-"]',
+                            'iframe[src*="doubleclick"]',
+                            'iframe[src*="ads"]',
+                            'ins.adsbygoogle',
+                        ];
+
+                        adSelectors.forEach(selector => {
+                            document.querySelectorAll(selector).forEach(el => el.remove());
+                        });
+                    }
+                """))
 
                 self._login(page)
                 self._select_character(page)
