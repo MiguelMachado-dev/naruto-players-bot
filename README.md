@@ -26,17 +26,17 @@ Bot automatizado para o jogo NarutoPlayers que gerencia caçadas e invasões aut
 
 2. Crie um ambiente virtual Python (recomendado):
 ```bash
-python -m venv venv
+python -m venv npbot
 ```
 
 3. Ative o ambiente virtual:
    - Windows:
    ```bash
-   venv\Scripts\activate
+   npbot\Scripts\activate
    ```
    - Linux/Mac:
    ```bash
-   source venv/bin/activate
+   source npbot/bin/activate
    ```
 
 4. Instale as dependências:
