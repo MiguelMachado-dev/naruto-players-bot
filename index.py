@@ -8,7 +8,7 @@ from bot.naruto_bot import NarutoBot
 
 # Configuração do Google AI (Gemini)
 genai.configure(api_key=config.GOOGLE_API_KEY)
-model = genai.GenerativeModel('gemini-2.0-flash')
+model = genai.GenerativeModel('gemini-2.0-flash-thinking-exp-01-21')
 
 # Configuração de logging
 logging.basicConfig(
