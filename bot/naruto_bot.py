@@ -165,24 +165,24 @@ class NarutoBot:
 
                 page = context.new_page()
 
-                page.on("load", lambda: page.evaluate("""
-                    () => {
-                        // Remove elementos comuns de anúncios
-                        const adSelectors = [
-                            'div[id*="google_ads"]',
-                            'div[id*="banner"]',
-                            'div[class*="ad-"]',
-                            'div[class*="ads-"]',
-                            'iframe[src*="doubleclick"]',
-                            'iframe[src*="ads"]',
-                            'ins.adsbygoogle',
-                        ];
+                # page.on("load", lambda: page.evaluate("""
+                #     () => {
+                #         // Remove elementos comuns de anúncios
+                #         const adSelectors = [
+                #             'div[id*="google_ads"]',
+                #             'div[id*="banner"]',
+                #             'div[class*="ad-"]',
+                #             'div[class*="ads-"]',
+                #             'iframe[src*="doubleclick"]',
+                #             'iframe[src*="ads"]',
+                #             'ins.adsbygoogle',
+                #         ];
 
-                        adSelectors.forEach(selector => {
-                            document.querySelectorAll(selector).forEach(el => el.remove());
-                        });
-                    }
-                """))
+                #         adSelectors.forEach(selector => {
+                #             document.querySelectorAll(selector).forEach(el => el.remove());
+                #         });
+                #     }
+                # """))
 
                 self._login(page)
                 self._select_character(page)
@@ -382,6 +382,12 @@ class NarutoBot:
     def _execute_hunt_cycle(self, page) -> bool:
         """Executa um ciclo completo de caçada"""
         page.wait_for_load_state()
+        # Verifica se o doujutsu está ativo para reduzir a penalidade
+        doujutsu_active_time = self._check_doujutsu(page)
+        if doujutsu_active_time > 0:
+            penalty_time = 120  # 2 minutos
+        else:
+            penalty_time = 300  # 5 minutos
         logging.info("Iniciando caçada...")
 
         page.goto("https://www.narutoplayers.com.br/?p=cacadas&action=nivel")
@@ -453,12 +459,6 @@ class NarutoBot:
 
             # Calcula quanto tempo já se passou durante o processamento da invasão
             elapsed_time = time.time() - penalty_start
-            # Verifica se o doujutsu está ativo para reduzir a penalidade
-            doujutsu_active_time = self._check_doujutsu(page)
-            if doujutsu_active_time > 0:
-                penalty_time = 120  # 2 minutos
-            else:
-                penalty_time = 300  # 5 minutos
             remaining_penalty = max(penalty_time - elapsed_time, 0)
 
             if remaining_penalty > 0:
