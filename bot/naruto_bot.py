@@ -7,7 +7,6 @@ import re
 from playwright.sync_api import sync_playwright
 from .captcha_processor import CaptchaProcessor
 from .login_captcha_processor import LoginCaptchaProcessor
-from .utils import load_stats, save_stats
 
 class NarutoBot:
     def __init__(self, username: str, password: str):
@@ -21,7 +20,6 @@ class NarutoBot:
         }
         self.captcha_processor = CaptchaProcessor(list(self.character_to_id.keys()))
         self.login_captcha_processor = LoginCaptchaProcessor()
-        self.stats = load_stats()
         logging.info("NarutoBot inicializado.")
 
         # Adiciona a escolha do tipo de caçada no início
@@ -41,24 +39,6 @@ class NarutoBot:
                 return 1  # Caçada aleatória como padrão
             else:
                 print("Opção inválida. Digite 1, 2 ou 3.")
-
-    def _load_stats(self) -> Dict:
-        """Carrega estatísticas do bot de um arquivo JSON"""
-        return load_stats()
-
-    def _save_stats(self) -> None:
-        """Salva estatísticas do bot em um arquivo JSON"""
-        save_stats(self.stats)
-
-    def update_stats(self, success: bool) -> None:
-        """Atualiza as estatísticas do bot"""
-        self.stats['total_hunts'] += 1
-        if success:
-            self.stats['successful_hunts'] += 1
-        else:
-            self.stats['failed_hunts'] += 1
-        self.stats['last_run'] = datetime.now().isoformat()
-        self._save_stats()
 
     @staticmethod
     def get_remaining_time(page) -> int:
@@ -114,7 +94,6 @@ class NarutoBot:
 
     def run(self) -> None:
         """Executa o bot principal"""
-        start_time = time.time()
         logging.info("Iniciando a execução do bot.")
 
         with sync_playwright() as p:
@@ -165,25 +144,6 @@ class NarutoBot:
 
                 page = context.new_page()
 
-                # page.on("load", lambda: page.evaluate("""
-                #     () => {
-                #         // Remove elementos comuns de anúncios
-                #         const adSelectors = [
-                #             'div[id*="google_ads"]',
-                #             'div[id*="banner"]',
-                #             'div[class*="ad-"]',
-                #             'div[class*="ads-"]',
-                #             'iframe[src*="doubleclick"]',
-                #             'iframe[src*="ads"]',
-                #             'ins.adsbygoogle',
-                #         ];
-
-                #         adSelectors.forEach(selector => {
-                #             document.querySelectorAll(selector).forEach(el => el.remove());
-                #         });
-                #     }
-                # """))
-
                 self._login(page)
                 self._select_character(page)
 
@@ -197,7 +157,6 @@ class NarutoBot:
                             success = self._execute_invasion(page)
                         else:
                             raise ValueError("Tipo de caçada inválido.")
-                        self.update_stats(success)
                         time.sleep(random.uniform(2, 5))  # Delay aleatório
                     except Exception as e:
                         logging.exception("Erro durante ciclo de caçada:")
@@ -206,8 +165,6 @@ class NarutoBot:
             except Exception as e:
                 logging.exception("Erro crítico durante execução do bot:")
             finally:
-                self.stats['total_runtime'] += time.time() - start_time
-                self._save_stats()
                 browser.close()
 
 
@@ -276,8 +233,7 @@ class NarutoBot:
     def _process_invasion(self, page) -> bool:
         """Processa a invasão após a caçada"""
         try:
-            # Clica no menu de invasão
-            page.locator('.menu_lateral li a[href="?p=invasao"]').click()
+            page.goto("https://www.narutoplayers.com.br/?p=invasao")
             page.wait_for_timeout(1000)
 
             # Verifica se está escrito "Atacar!"
@@ -308,7 +264,7 @@ class NarutoBot:
                     logging.error(error_text)
                     # Se error_text conter a seguinte frase "25 pontos de HP", va para status e recupe o HP.
                     if "25 pontos de HP" in error_text:
-                        page.locator('.menu_lateral li a[href="?p=status"]').click()
+                        page.goto("https://www.narutoplayers.com.br/?p=status")
                         page.wait_for_load_state()
                         hp_text = page.locator('#hp_baixo .hp_xp').inner_text()
                         current_hp = int(hp_text.split("/")[0].strip())
@@ -343,7 +299,9 @@ class NarutoBot:
     def _check_doujutsu(self, page) -> int:
         """Verifica se o Doujutsu está ativo e retorna o tempo restante."""
         try:
-            page.locator('.menu_lateral li a[href="?p=status"]').click()
+            # Caso já esteja na página de status, não é necessário navegar para ela
+            if not page.url.endswith("status"):
+                page.goto("https://www.narutoplayers.com.br/?p=status")
             page.wait_for_load_state()
             doujutsu_element = page.locator('#doujutsu_relogio')
             doujutsu_name_element = page.locator('.doujutsu .doujutsu_centro .doujutsu_info .linha_css2.center.rotulo')
